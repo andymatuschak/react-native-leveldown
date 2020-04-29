@@ -220,7 +220,6 @@ RCT_REMAP_METHOD(del, delDB:(NSInteger)dbHandle key:(NSString *)key sync:(BOOL)s
 RCT_REMAP_METHOD(batch, batchDB:(NSInteger)dbHandle operations:(NSArray *)operations resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
 {
   GetDB(dbHandle);
-    NSLog(@"%ld Writing %ld ops", dbHandle, [operations count]);
 
     leveldb::WriteBatch batch;
   for (NSDictionary *operation in operations) {
@@ -240,7 +239,6 @@ RCT_REMAP_METHOD(batch, batchDB:(NSInteger)dbHandle operations:(NSArray *)operat
       reject(@"BatchOperationError", [NSString stringWithFormat:@"Error writing batch: %@", NSStringFromCPPString(status.ToString())], nil);
       return;
     }
-    NSLog(@"%ld Wrote %ld ops", dbHandle, [operations count]);
   resolve(nil);
 }
 
