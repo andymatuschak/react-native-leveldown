@@ -2,6 +2,9 @@ import * as ALD from "abstract-leveldown";
 import supports from "level-supports";
 import { NativeModules } from "react-native";
 
+// @ts-ignore
+const setImmediate = global.setImmediate;
+
 export interface ReactNativeLeveldownWriteOptions {
   sync?: boolean; // default false
 }
@@ -13,6 +16,7 @@ class ReactNativeLeveldownIterator<K, V> extends ALD.AbstractIterator<K, V> {
   queueLength: number;
   isExhausted: boolean;
   iteratorHandle: number;
+  isInImmediate: boolean;
 
   constructor(db: ALD.AbstractLevelDOWN, dbHandle: number, options: ALD.AbstractIteratorOptions) {
     super(db);
@@ -21,6 +25,7 @@ class ReactNativeLeveldownIterator<K, V> extends ALD.AbstractIterator<K, V> {
     this.queueLength = 0;
     this.isExhausted = false;
     this.iteratorHandle = ReactNativeLeveldownIterator.iteratorHandleCounter++;
+    this.isInImmediate = false;
     NativeModules.Leveldown.createIterator(dbHandle, this.iteratorHandle, options);
   }
 
@@ -34,18 +39,26 @@ class ReactNativeLeveldownIterator<K, V> extends ALD.AbstractIterator<K, V> {
         this.keyQueue = keys ?? null;
         this.valueQueue = values ?? null;
       } catch (error) {
-        callback(error, undefined, undefined);
+        setImmediate(() => callback(error, undefined, undefined));
         return;
       }
     }
 
     if (this.isExhausted) {
-      callback();
+      setImmediate(callback);
     } else {
       this.queueLength--;
       const key = this.keyQueue?.shift();
       const value = this.valueQueue?.shift();
-      callback(undefined, key, value);
+      if (this.isInImmediate) {
+        callback(undefined, key, value);
+      } else {
+        setImmediate(() => {
+          this.isInImmediate = true;
+          callback(undefined, key, value);
+          this.isInImmediate = false;
+        });
+      }
     }
   }
 
@@ -54,7 +67,7 @@ class ReactNativeLeveldownIterator<K, V> extends ALD.AbstractIterator<K, V> {
   }
 
   _end(callback: ALD.ErrorCallback): void {
-    NativeModules.Leveldown.endIterator(this.iteratorHandle).then(callback(undefined)).catch(callback);
+    NativeModules.Leveldown.endIterator(this.iteratorHandle).then(() => setImmediate(callback)).catch(callback);
   }
 }
 
@@ -83,7 +96,7 @@ export default class ReactNativeLeveldown extends ALD.AbstractLevelDOWN {
 
   _open(options: ALD.AbstractOpenOptions, callback: ALD.ErrorCallback): void {
     NativeModules.Leveldown.open(this.databaseHandle, this.databaseName, options.createIfMissing, options.errorIfExists)
-      .then(() => callback(undefined)).catch(callback);
+      .then(() => setImmediate(() => callback())).catch(callback);
   }
 
   _put(key: string,
@@ -91,28 +104,29 @@ export default class ReactNativeLeveldown extends ALD.AbstractLevelDOWN {
        options: ReactNativeLeveldownWriteOptions,
        callback: ALD.ErrorCallback): void {
     NativeModules.Leveldown.put(this.databaseHandle, key, value, options.sync ?? false)
-      .then(() => callback(undefined)).catch(callback);
+      .then(() => setImmediate(callback)).catch(callback);
   }
 
   _get<V>(key: string, options: {}, callback: ALD.ErrorValueCallback<V>): void {
-    NativeModules.Leveldown.get(this.databaseHandle, key).then((value: V) => callback(undefined, value)).catch(callback);
+    NativeModules.Leveldown.get(this.databaseHandle, key).then((value: V) => setImmediate(
+      () => callback(undefined, value))).catch(callback);
   }
 
   _del<V>(key: string,
           options: ReactNativeLeveldownWriteOptions,
           callback: ALD.ErrorCallback): void {
     NativeModules.Leveldown.del(this.databaseHandle, key, options.sync ?? false)
-      .then(() => callback(undefined)).catch(callback);
+      .then(() => setImmediate(callback)).catch(callback);
   }
 
   _close(callback: ALD.ErrorCallback): void {
-    NativeModules.Leveldown.close(this.databaseHandle).then(() => callback).catch(callback);
+    NativeModules.Leveldown.close(this.databaseHandle).then(() => setImmediate(callback)).catch(callback);
   }
 
   async _batch(operations: ReadonlyArray<ALD.AbstractBatch>,
                options: {},
                callback: ALD.ErrorCallback): Promise<void> {
-    NativeModules.Leveldown.batch(this.databaseHandle, operations).then(() => callback(undefined)).catch(callback);
+    NativeModules.Leveldown.batch(this.databaseHandle, operations).then(() => setImmediate(callback)).catch(callback);
   }
 
   _iterator<K, V>(options: ALD.AbstractIteratorOptions): ReactNativeLeveldownIterator<K, V> {
