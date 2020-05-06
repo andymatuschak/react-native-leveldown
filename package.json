@@ -21,7 +21,7 @@
     "email": "andy@andymatuschak.org"
   },
   "files": [
-    "./dist/*"
+    "dist"
   ],
   "license": "MIT",
   "licenseFilename": "LICENSE",
