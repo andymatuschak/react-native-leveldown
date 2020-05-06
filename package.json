@@ -1,7 +1,7 @@
 {
   "name": "react-native-leveldown",
   "title": "React Native Leveldown",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "React Native native module for LevelJS, compatible with abstract-leveldown",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
