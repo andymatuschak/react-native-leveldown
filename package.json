@@ -22,7 +22,8 @@
   },
   "files": [
     "dist",
-    "ios"
+    "ios",
+    "react-native-leveldown.podspec"
   ],
   "license": "MIT",
   "licenseFilename": "LICENSE",
