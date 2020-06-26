@@ -2,7 +2,7 @@
 
 This library implements an [`abstract-leveldown`](https://github.com/Level/abstract-leveldown) compatible interface to [LevelDB](https://github.com/google/leveldb) for [React Native](https://reactnative.dev). The implementation is a thin [Native Module](https://reactnative.dev/docs/native-modules-setup) binding directly to the original C++ implementation of LevelDB.
 
-The native bindings are currently implemented only for iOS (and macOS via Catalyst). A patch implementing Android bindings would be welcome! In the meantime, you can get a compatible interface via [level-js](https://github.com/Level/level-js) on top of [indexeddbshim](https://github.com/indexeddbshim/indexeddbshim) on top of [expo-sqlite](https://github.com/expo/expo/tree/master/packages/expo-sqlite), but that's obviously much much slower.
+The native bindings are currently implemented only for iOS (and macOS via Catalyst). [A patch implementing Android bindings would be welcome](https://github.com/andymatuschak/react-native-leveldown/issues/1)! In the meantime, you can get a compatible interface via [level-js](https://github.com/Level/level-js) on top of [indexeddbshim](https://github.com/indexeddbshim/indexeddbshim) on top of [expo-sqlite](https://github.com/expo/expo/tree/master/packages/expo-sqlite), but that's obviously much much slower.
 
 ## Usage
 
