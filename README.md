@@ -23,3 +23,7 @@ await db.close();
 ```
 
 Note that databases are stored in the app container's Documents directory. In the future, the constructor API should probably be extended to add an option to store it instead in some semi-durable cache location, or an ephemeral temporary directory. 
+
+## Testing
+
+This library passes the `abstract-leveldown` test suite. To run the tests, launch the React Native app in the `testapp` subdirectory.

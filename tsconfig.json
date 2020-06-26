@@ -9,5 +9,6 @@
     "declaration": true,
     "declarationMap": true
   },
+  "compileOnSave": true,
   "files": ["./index.ts"]
 }

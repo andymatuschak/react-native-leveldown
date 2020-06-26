@@ -2,48 +2,11 @@
 #import "leveldb/db.h"
 #import "leveldb/write_batch.h"
 
-NSMapTable<NSNumber *, NSValue *> *_dbHandleTable;
-NSMapTable<NSNumber *, NSValue *> *getDBHandleTable() {
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        _dbHandleTable = [[NSMapTable alloc] initWithKeyOptions:NSPointerFunctionsOpaqueMemory | NSPointerFunctionsIntegerPersonality valueOptions:NSPointerFunctionsOpaqueMemory | NSPointerFunctionsOpaquePersonality capacity:4];
-    });
-    return _dbHandleTable;
-}
-
-NSMutableDictionary<NSNumber *, NSValue *> *_iteratorWrapperTable;
-NSMutableDictionary<NSNumber *, NSValue *> *getIteratorWrapperTable() {
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        _iteratorWrapperTable = [NSMutableDictionary dictionary];
-    });
-    return _iteratorWrapperTable;
-}
-
-#define NSStringFromCPPString(cppString) [NSString stringWithCString:cppString.c_str() encoding:NSUTF8StringEncoding]
-
-#define GetDB(dbHandle) \
-auto dbHandleTable = getDBHandleTable(); \
-leveldb::DB *db = (leveldb::DB *)NSMapGet(dbHandleTable, (void *)dbHandle); \
-if (!db) { \
-reject(@"UnknownHandle", [NSString stringWithFormat:@"Unknown DB handle %ld", dbHandle], nil); \
-return; \
-} \
-
-#define GetIterator(iteratorHandle) \
-auto iteratorWrapperTable = getIteratorWrapperTable(); \
-NSValue *iteratorWrapperValuer = [iteratorWrapperTable objectForKey:@(iteratorHandle)]; \
-if (!iteratorWrapperValuer) { \
-reject(@"UnknownHandle", [NSString stringWithFormat:@"Unknown iterator handle %ld", iteratorHandle], nil); \
-return; \
-} \
-RNLeveldownIterator iterator; \
-[iteratorWrapperValuer getValue:&iterator];
-
-#define GetSlice(input) leveldb::Slice([input UTF8String], [input lengthOfBytesUsingEncoding:NSUTF8StringEncoding])
-
 struct RNLeveldownIterator {
-    BOOL hasEndingBound;
+    leveldb::Slice startingSlice;
+    char *startingSliceStorage;
+    BOOL startingBoundIsOpen;
+
     leveldb::Slice endingSlice;
     char *endingSliceStorage;
     BOOL endingBoundIsOpen;
@@ -63,9 +26,55 @@ struct RNLeveldownIterator {
     NSInteger dbHandle;
 };
 
+NSMapTable *_dbHandleTable;
+NSMapTable *getDBHandleTable() {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        _dbHandleTable = [[NSMapTable alloc] initWithKeyOptions:NSPointerFunctionsOpaqueMemory | NSPointerFunctionsIntegerPersonality valueOptions:NSPointerFunctionsOpaqueMemory | NSPointerFunctionsOpaquePersonality capacity:4];
+    });
+    return _dbHandleTable;
+}
+
+NSUInteger getIteratorSize(const void * _Nonnull value) { return sizeof(RNLeveldownIterator); }
+
+NSMapTable *_iteratorWrapperTable;
+NSMapTable *getIteratorWrapperTable() {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSPointerFunctions *keyFunctions = [NSPointerFunctions pointerFunctionsWithOptions:NSPointerFunctionsOpaqueMemory | NSPointerFunctionsIntegerPersonality];
+        NSPointerFunctions *valueFunctions = [NSPointerFunctions pointerFunctionsWithOptions:NSPointerFunctionsMallocMemory | NSPointerFunctionsStructPersonality | NSPointerFunctionsCopyIn];
+        valueFunctions.sizeFunction = getIteratorSize;
+        _iteratorWrapperTable = [[NSMapTable alloc] initWithKeyPointerFunctions:keyFunctions valuePointerFunctions:valueFunctions capacity:4];
+    });
+    return _iteratorWrapperTable;
+}
+
+#define NSStringFromCPPString(cppString) [NSString stringWithCString:cppString.c_str() encoding:NSUTF8StringEncoding]
+
+#define GetDB(dbHandle) \
+auto dbHandleTable = getDBHandleTable(); \
+leveldb::DB *db = (leveldb::DB *)NSMapGet(dbHandleTable, (void *)dbHandle); \
+if (!db) { \
+reject(@"UnknownHandle", [NSString stringWithFormat:@"Unknown DB handle %ld", dbHandle], nil); \
+return; \
+} \
+
+#define GetIterator(iteratorHandle) \
+auto iteratorWrapperTable = getIteratorWrapperTable(); \
+RNLeveldownIterator *iterator = (RNLeveldownIterator *)NSMapGet(iteratorWrapperTable, (void *)iteratorHandle); \
+if (!iterator) { \
+reject(@"UnknownHandle", [NSString stringWithFormat:@"Unknown iterator handle %ld", iteratorHandle], nil); \
+return; \
+} \
+
+#define GetSlice(input) leveldb::Slice([input UTF8String], [input lengthOfBytesUsingEncoding:NSUTF8StringEncoding])
+
 // assumes !IsEnded();
-void RNLeveldownIteratorAdvance(RNLeveldownIterator self) {
-    self.isReversed ? self.iterator->Prev() : self.iterator->Next();
+void RNLeveldownIteratorAdvance(RNLeveldownIterator *self, BOOL increaseStepCount) {
+    if (increaseStepCount) {
+        self->stepCount++;
+    }
+    self->isReversed ? self->iterator->Prev() : self->iterator->Next();
 }
 
 RNLeveldownIterator RNLeveldownIteratorInit(NSDictionary *options, leveldb::DB *db) {
@@ -75,7 +84,7 @@ RNLeveldownIterator RNLeveldownIteratorInit(NSDictionary *options, leveldb::DB *
     self.snapshot = self.db->GetSnapshot();
 
     self.limit = [options[@"limit"] integerValue];
-    self.hasLimit = self.limit != -1;
+    self.hasLimit = [options objectForKey:@"limit"] != nil && self.limit != -1;
     self.isReversed = [options[@"reverse"] boolValue];
 
     self.readsKeys = [options[@"keys"] boolValue];
@@ -103,12 +112,24 @@ RNLeveldownIterator RNLeveldownIteratorInit(NSDictionary *options, leveldb::DB *
 
     NSString *startingBound = self.isReversed ? upperBound : lowerBound;
     if (startingBound) {
-        leveldb::Slice startingSlice = GetSlice(startingBound);
-        self.iterator->Seek(startingSlice);
-        if (!(self.isReversed ? upperBoundIsOpen : lowerBoundIsOpen) && self.iterator->Valid() && self.iterator->key().compare(startingSlice) == 0) {
-            RNLeveldownIteratorAdvance(self);
+        size_t startingSliceLength = [startingBound lengthOfBytesUsingEncoding:[NSString defaultCStringEncoding]] + 1;
+        self.startingSliceStorage = (char *)malloc(startingSliceLength);
+        [startingBound getCString:self.startingSliceStorage maxLength:startingSliceLength encoding:[NSString defaultCStringEncoding]];
+        self.startingSlice = leveldb::Slice(self.startingSliceStorage);
+        self.startingBoundIsOpen = self.isReversed ? upperBoundIsOpen : lowerBoundIsOpen;
+
+        self.iterator->Seek(self.startingSlice);
+        if (self.iterator->Valid()) {
+            auto comparison = self.iterator->key().compare(self.startingSlice);
+            if ((!(self.isReversed ? upperBoundIsOpen : lowerBoundIsOpen) && comparison == 0) || (self.isReversed && comparison > 0)) {
+                RNLeveldownIteratorAdvance(&self, false);
+            }
+        } else if (self.isReversed) {
+            // We must have seeked past the end.
+            self.iterator->SeekToLast();
         }
     } else {
+        self.startingSliceStorage = NULL;
         self.isReversed ? self.iterator->SeekToLast() : self.iterator->SeekToFirst();
     }
 
@@ -119,24 +140,25 @@ RNLeveldownIterator RNLeveldownIteratorInit(NSDictionary *options, leveldb::DB *
         [endingBound getCString:self.endingSliceStorage maxLength:endingSliceLength encoding:[NSString defaultCStringEncoding]];
         self.endingSlice = leveldb::Slice(self.endingSliceStorage);
         self.endingBoundIsOpen = self.isReversed ? lowerBoundIsOpen : upperBoundIsOpen;
-        self.hasEndingBound = YES;
     } else {
-        self.hasEndingBound = NO;
         self.endingSliceStorage = NULL;
     }
 
     return self;
 }
 
-void RNLeveldownIteratorClose(RNLeveldownIterator self) {
+void RNLeveldownIteratorClose(RNLeveldownIterator &self) {
     delete self.iterator;
     if (self.endingSliceStorage) {
         free(self.endingSliceStorage);
     }
+    if (self.startingSliceStorage) {
+        free(self.startingSliceStorage);
+    }
     self.db->ReleaseSnapshot(self.snapshot);
 }
 
-inline BOOL RNLeveldownIteratorIsEnded(RNLeveldownIterator self) {
+inline BOOL RNLeveldownIteratorIsEnded(RNLeveldownIterator &self) {
     if (!self.iterator->Valid()) {
         return YES;
     }
@@ -145,9 +167,15 @@ inline BOOL RNLeveldownIteratorIsEnded(RNLeveldownIterator self) {
         return YES;
     }
 
-    if (self.hasEndingBound) {
+    if (self.endingSliceStorage) {
         auto comparison = self.iterator->key().compare(self.endingSlice);
         if ((comparison < 0 && self.isReversed) || (comparison > 0 && !self.isReversed) || (comparison == 0 && !self.endingBoundIsOpen)) {
+            return YES;
+        }
+    }
+    if (self.startingSliceStorage) {
+        auto comparison = self.iterator->key().compare(self.startingSlice);
+        if ((comparison > 0 && self.isReversed) || (comparison < 0 && !self.isReversed) || (comparison == 0 && !self.startingBoundIsOpen)) {
             return YES;
         }
     }
@@ -156,13 +184,35 @@ inline BOOL RNLeveldownIteratorIsEnded(RNLeveldownIterator self) {
 }
 
 // assumes !IsEnded();
-inline leveldb::Slice RNLeveldownIteratorCurrentKey(RNLeveldownIterator self) {
+inline leveldb::Slice RNLeveldownIteratorCurrentKey(RNLeveldownIterator &self) {
     return self.iterator->key();
 }
 
 @implementation RNLeveldown
 
 RCT_EXPORT_MODULE(Leveldown)
+
+- (void)dealloc {
+    NSMapTable *dbHandleTable = getDBHandleTable();
+    NSMapEnumerator dbHandleEnumerator = NSEnumerateMapTable(dbHandleTable);
+    NSInteger dbHandle;
+    leveldb::DB *db;
+    while (NSNextMapEnumeratorPair(&dbHandleEnumerator, (void **)&dbHandle, (void **)&db)) {
+        delete db;
+    }
+    NSResetMapTable(dbHandleTable);
+    NSEndMapTableEnumeration(&dbHandleEnumerator);
+
+    NSMapTable *iteratorWrapperTable = getIteratorWrapperTable();
+    NSMapEnumerator iteratorWrapperEnumerator = NSEnumerateMapTable(iteratorWrapperTable);
+    NSInteger iteratorWrapperHandle;
+    RNLeveldownIterator iterator;
+    while (NSNextMapEnumeratorPair(&iteratorWrapperEnumerator, (void **)&iteratorWrapperHandle, (void **)&iterator)) {
+        RNLeveldownIteratorClose(iterator);
+    }
+    NSResetMapTable(iteratorWrapperTable);
+    NSEndMapTableEnumeration(&iteratorWrapperEnumerator);
+}
 
 RCT_REMAP_METHOD(open, openDB:(NSInteger)dbHandle databaseName:(NSString *)databaseName createIfMissing:(BOOL)createIfMissing errorIfExists:(BOOL)errorIfExists  resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
 {
@@ -260,7 +310,8 @@ RCT_REMAP_METHOD(close, closeDB:(NSInteger)dbHandle resolver:(RCTPromiseResolveB
 {
     GetDB(dbHandle);
     delete db;
-    [dbHandleTable removeObjectForKey:@(dbHandle)];
+    NSMapRemove(dbHandleTable, (void *)dbHandle);
+
     resolve(nil);
 }
 
@@ -288,32 +339,32 @@ RCT_REMAP_METHOD(createIterator, createIteratorDB:(NSInteger)dbHandle iteratorHa
     GetDB(dbHandle);
 
     RNLeveldownIterator iteratorWrapper = RNLeveldownIteratorInit(options, db);
-    [iteratorWrapperTable setObject:[NSValue value:&iteratorWrapper withObjCType:@encode(RNLeveldownIterator)] forKey:@(iteratorHandle)];
+    NSMapInsert(iteratorWrapperTable, (void *)iteratorHandle, &iteratorWrapper);
     resolve(nil);
 }
 
 RCT_REMAP_METHOD(readIterator, readIterator:(NSInteger)iteratorHandle count:(NSInteger)count resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
     GetIterator(iteratorHandle);
     NSMutableArray *keys = nil;
-    if (iterator.readsKeys) {
+    if (iterator->readsKeys) {
         keys = [NSMutableArray arrayWithCapacity:count];
     }
     NSMutableArray *values = nil;
-    if (iterator.readsValues) {
+    if (iterator->readsValues) {
         values = [NSMutableArray arrayWithCapacity:count];
     }
     leveldb::ReadOptions readOptions;
-    readOptions.snapshot = iterator.snapshot;
+    readOptions.snapshot = iterator->snapshot;
 
     NSInteger readIndex = 0;
-    for (readIndex = 0; readIndex < count && !RNLeveldownIteratorIsEnded(iterator); RNLeveldownIteratorAdvance(iterator), readIndex++) {
-        leveldb::Slice key = RNLeveldownIteratorCurrentKey(iterator);
-        if (iterator.readsKeys) {
+    for (readIndex = 0; readIndex < count && !RNLeveldownIteratorIsEnded(*iterator); RNLeveldownIteratorAdvance(iterator, true), readIndex++) {
+        leveldb::Slice key = RNLeveldownIteratorCurrentKey(*iterator);
+        if (iterator->readsKeys) {
             [keys addObject:NSStringFromCPPString(key.ToString())];
         }
-        if (iterator.readsValues) {
+        if (iterator->readsValues) {
             std::string value;
-            leveldb::Status status = iterator.db->Get(readOptions, key, &value);
+            leveldb::Status status = iterator->db->Get(readOptions, key, &value);
             if (status.ok()) {
                 [values addObject:NSStringFromCPPString(value)];
             } else {
@@ -335,14 +386,24 @@ RCT_REMAP_METHOD(readIterator, readIterator:(NSInteger)iteratorHandle count:(NSI
 
 RCT_REMAP_METHOD(seekIterator, seekIterator:(NSInteger)iteratorHandle key:(NSString *)key resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
     GetIterator(iteratorHandle);
-    iterator.iterator->Seek(GetSlice(key));
+    auto keySlice = GetSlice(key);
+    iterator->iterator->Seek(keySlice);
+    if (iterator->isReversed) {
+        if (!iterator->iterator->Valid()) {
+            // We must have seeked past the end.
+            iterator->iterator->SeekToLast();
+        } else if (iterator->iterator->key().compare(keySlice) > 0) {
+            // We seeked past the target; step back.
+            RNLeveldownIteratorAdvance(iterator, false);
+        }
+    }
     resolve(nil);
 }
 
 RCT_REMAP_METHOD(endIterator, endIterator:(NSInteger)iteratorHandle resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
     GetIterator(iteratorHandle);
-    RNLeveldownIteratorClose(iterator);
-    [iteratorWrapperTable removeObjectForKey:@(iteratorHandle)];
+    RNLeveldownIteratorClose(*iterator);
+    NSMapRemove(iteratorWrapperTable, (void *)iteratorHandle);
     resolve(nil);
 }
 
