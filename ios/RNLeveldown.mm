@@ -84,6 +84,7 @@ RNLeveldownIterator RNLeveldownIteratorInit(NSDictionary *options, leveldb::DB *
     self.snapshot = self.db->GetSnapshot();
 
     self.limit = [options[@"limit"] integerValue];
+    self.stepCount = 0;
     self.hasLimit = [options objectForKey:@"limit"] != nil && self.limit != -1;
     self.isReversed = [options[@"reverse"] boolValue];
 
