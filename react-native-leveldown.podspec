@@ -10,13 +10,10 @@ Pod::Spec.new do |s|
                   react-native-leveldown
                    DESC
   s.homepage     = "https://github.com/github_account/react-native-leveldown"
-  # brief license entry:
   s.license      = "MIT"
-  # optional - use expanded license entry instead:
-  # s.license    = { :type => "MIT", :file => "LICENSE" }
-  s.authors      = { "Your Name" => "yourname@email.com" }
+  s.authors      = { "Andy Matuschak" => "andy@andymatuschak.org" }
   s.platforms    = { :ios => "9.0" }
-  s.source       = { :git => "https://github.com/github_account/react-native-leveldown.git", :tag => "#{s.version}" }
+  s.source       = { :git => "https://github.com/andymatuschak/react-native-leveldown.git", :tag => "#{s.version}" }
 
   s.source_files = "ios/**/*.{h,m,mm,swift}"
   s.requires_arc = true
