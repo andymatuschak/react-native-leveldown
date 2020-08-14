@@ -1,0 +1,3 @@
+include ':leveldb-android'
+project(':leveldb-android').projectDir = new File(rootDir, 'modules/leveldb-android/leveldb/')
+

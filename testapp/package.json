@@ -15,7 +15,7 @@
     "react": "16.11.0",
     "react-native": "0.62.2",
     "react-native-fs": "^2.16.6",
-    "react-native-leveldown": "file:..",
+    "react-native-leveldown": "./..",
     "tape": "^5.0.1"
   },
   "devDependencies": {
