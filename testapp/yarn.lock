@@ -5487,8 +5487,8 @@ react-native-fs@^2.16.6:
     base-64 "^0.1.0"
     utf8 "^3.0.0"
 
-"react-native-leveldown@file:..":
-  version "0.0.5"
+react-native-leveldown@./..:
+  version "0.0.7"
   dependencies:
     abstract-leveldown "^6.3.0"
     buffer "^5.6.0"

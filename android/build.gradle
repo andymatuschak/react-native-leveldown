@@ -55,24 +55,29 @@ android {
     }
 }
 
-repositories {
-    // ref: https://www.baeldung.com/maven-local-repository
-    mavenLocal()
-    maven {
-        // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
-        url "$rootDir/../node_modules/react-native/android"
-    }
-    maven {
-        // Android JSC is installed from npm
-        url "$rootDir/../node_modules/jsc-android/dist"
-    }
-    google()
-    jcenter()
+allprojects {
+	repositories {
+		// ref: https://www.baeldung.com/maven-local-repository
+		mavenLocal()
+		maven {
+			// All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
+			url "$rootDir/../node_modules/react-native/android"
+		}
+		maven {
+			// Android JSC is installed from npm
+			url "$rootDir/../node_modules/jsc-android/dist"
+		}
+		google()
+		jcenter()
+        maven { url 'https://jitpack.io' }
+	}
 }
 
 dependencies {
     //noinspection GradleDynamicVersion
     implementation 'com.facebook.react:react-native:+'  // From node_modules
+
+    implementation 'com.github.RAN3000:leveldb-android:v2.0.0.5'
 }
 
 def configureReactNativePom(def pom) {
@@ -82,7 +87,7 @@ def configureReactNativePom(def pom) {
         name packageJson.title
         artifactId packageJson.name
         version = packageJson.version
-        group = "com.reactlibrary"
+        group = "com.reactnativeleveldown"
         description packageJson.description
         url packageJson.repository.baseUrl
 
