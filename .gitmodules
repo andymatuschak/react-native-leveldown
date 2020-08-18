@@ -1,3 +1,0 @@
-[submodule "android/modules/leveldb-android"]
-	path = android/modules/leveldb-android
-	url = git@github.com:RAN3000/leveldb-android.git
