@@ -274,6 +274,19 @@ public class LeveldownModule extends ReactContextBaseJavaModule implements Lifec
 
     @Override
     public void onHostDestroy() {
+        this.closeAll();
+    }
+
+    // This method is called when the "Reload" button is pressed in the dev menu.
+    // We need to close all database handles and iterators, otherwise it is not
+    // possible to open another database, as the database lock will still be
+    // held by the process.
+    @Override
+    public void onCatalystInstanceDestroy() {
+        this.closeAll();
+    }
+
+    private void closeAll() {
         for (LevelDB db : dbHandleTable.values()) {
             db.close();
         }
