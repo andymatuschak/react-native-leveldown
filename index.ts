@@ -5,19 +5,10 @@ import { NativeModules } from "react-native";
 
 // @ts-ignore
 const setImmediate = global.setImmediate;
+const BinaryPrefix = "BINARY::";
 
 export interface ReactNativeLeveldownWriteOptions {
   sync?: boolean; // default false
-}
-
-function inputAsString(key: any): string {
-  if (typeof key === "string") {
-    return key;
-  } else if (Buffer.isBuffer(key)) {
-    return key.toString("binary");
-  } else {
-    return key.toString();
-  }
 }
 
 class ReactNativeLeveldownIterator<
@@ -85,21 +76,26 @@ class ReactNativeLeveldownIterator<
       setImmediate(callback as any);
     } else {
       this.queueLength--;
-      let keyString: string;
       let key: K;
       if (this.options.keys) {
-        keyString = this.keyQueue?.shift();
+        const keyString = this.keyQueue?.shift();
+        const buffer = Buffer.from(keyString, "hex");
         key = (this.keyAsBuffer
-          ? Buffer.from(keyString, "binary")
-          : keyString) as K;
+          ? buffer
+          : buffer.toString()) as K;
       }
-      let valueString: string;
       let value: V;
       if (this.options.values) {
-        valueString = this.valueQueue?.shift();
+        const valueString = this.valueQueue?.shift();
+        let buffer;
+        if (valueString.startsWith(BinaryPrefix)) {
+          buffer = Buffer.from(valueString.slice(8), "base64");
+        } else {
+          buffer = Buffer.from(valueString);
+        }
         value = (this.valueAsBuffer
-          ? Buffer.from(valueString, "binary")
-          : valueString) as V;
+          ? buffer
+          : buffer.toString()) as V;
       }
       if (this.isInImmediate) {
         callback(undefined, key, value);
@@ -120,7 +116,7 @@ class ReactNativeLeveldownIterator<
     this.isExhausted = false;
     NativeModules.Leveldown.seekIterator(
       this.iteratorHandle,
-      inputAsString(target)
+      target
     );
   }
 
@@ -167,6 +163,23 @@ export default class ReactNativeLeveldown extends ALD.AbstractLevelDOWN {
       .catch(callback);
   }
 
+  _serializeKey(key: any): string {
+    if (typeof key === "string" || ArrayBuffer.isView(key)) {
+      return Buffer.from(key as any).toString("hex");
+    }
+    return Buffer.from(key.toString()).toString("hex");
+  }
+
+  _serializeValue(value: any): string {
+    if (typeof value === "string") {
+      return value;
+    }
+    if (ArrayBuffer.isView(value)) {
+      return `${BinaryPrefix}${Buffer.from(value as any).toString("base64")}`;
+    }
+    return value.toString();
+  }
+
   _put(
     key: string | Buffer,
     value: string,
@@ -175,8 +188,8 @@ export default class ReactNativeLeveldown extends ALD.AbstractLevelDOWN {
   ): void {
     NativeModules.Leveldown.put(
       this.databaseHandle,
-      inputAsString(key),
-      inputAsString(value),
+      key,
+      value,
       options.sync ?? false
     )
       .then(() => setImmediate(callback as any))
@@ -188,10 +201,16 @@ export default class ReactNativeLeveldown extends ALD.AbstractLevelDOWN {
     options: { asBuffer: boolean },
     callback: ALD.ErrorValueCallback<V>
   ): void {
-    NativeModules.Leveldown.get(this.databaseHandle, inputAsString(key))
+    NativeModules.Leveldown.get(this.databaseHandle, key)
       .then((value: string) =>
         setImmediate(() => {
-          const result = options.asBuffer ?? true ? Buffer.from(value) : value;
+          let buffer;
+          if (value.startsWith(BinaryPrefix)) {
+            buffer = Buffer.from(value.slice(8), "base64");
+          } else {
+            buffer = Buffer.from(value);
+          }
+          const result = options.asBuffer ?? true ? buffer : buffer.toString();
           return callback(undefined, result as V);
         })
       )
@@ -205,7 +224,7 @@ export default class ReactNativeLeveldown extends ALD.AbstractLevelDOWN {
   ): void {
     NativeModules.Leveldown.del(
       this.databaseHandle,
-      inputAsString(key),
+      typeof key === "string" ? key : key.toString("hex"),
       options.sync ?? false
     )
       .then(() => setImmediate(callback as any))
@@ -223,14 +242,7 @@ export default class ReactNativeLeveldown extends ALD.AbstractLevelDOWN {
     options: {},
     callback: ALD.ErrorCallback
   ): Promise<void> {
-    NativeModules.Leveldown.batch(this.databaseHandle, operations.map((op) => {
-      const newOP = {...op};
-      newOP.key = inputAsString(newOP.key);
-      if (newOP.type === "put") {
-        newOP.value = inputAsString(newOP.value);
-      }
-      return newOP;
-    }))
+    NativeModules.Leveldown.batch(this.databaseHandle, operations)
       .then(() => setImmediate(callback as any))
       .catch(callback);
   }
