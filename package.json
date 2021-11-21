@@ -30,19 +30,19 @@
   "licenseFilename": "LICENSE",
   "readmeFilename": "README.md",
   "peerDependencies": {
-    "react": "^16.8.1",
+    "react": "^17.0.2",
     "react-native": ">=0.60.0-rc.0 <1.0.x"
   },
   "devDependencies": {
-    "@types/abstract-leveldown": "^5.0.1",
+    "@types/abstract-leveldown": "^5.0.2",
     "prettier": "^2.1.2",
-    "react": "^17.0.1",
-    "react-native": "^0.63.3",
-    "typescript": "^4.0.5"
+    "react": "^17.0.2",
+    "react-native": "^0.66.3",
+    "typescript": "^4.4.4"
   },
   "dependencies": {
-    "abstract-leveldown": "^6.3.0",
-    "buffer": "^6.0.2",
-    "level-supports": "^1.0.1"
+    "abstract-leveldown": "^7.2.0",
+    "buffer": "^6.0.3",
+    "level-supports": "^3.0.0"
   }
 }

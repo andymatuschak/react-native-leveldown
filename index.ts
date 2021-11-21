@@ -1,6 +1,6 @@
 import * as ALD from "abstract-leveldown";
 import { Buffer } from "buffer";
-import supports from "level-supports";
+import { supports } from "level-supports";
 import { NativeModules } from "react-native";
 
 // @ts-ignore
@@ -33,6 +33,7 @@ class ReactNativeLeveldownIterator<
   isInImmediate: boolean;
   keyAsBuffer: boolean;
   valueAsBuffer: boolean;
+  options: ALD.AbstractIteratorOptions;
 
   constructor(
     db: ALD.AbstractLevelDOWN,
@@ -53,6 +54,7 @@ class ReactNativeLeveldownIterator<
       gte: options.gte ?? (options.reverse ? options.end : options.start),
       lte: options.lte ?? (options.reverse ? options.start : options.end),
     });
+  this.options = options;
   }
 
   async _next(
@@ -71,8 +73,8 @@ class ReactNativeLeveldownIterator<
         );
         this.queueLength += readCount;
         this.isExhausted = readCount === 0;
-        this.keyQueue = keys ?? null;
-        this.valueQueue = values ?? null;
+        this.keyQueue = this.options.keys ? keys ?? null : null;
+        this.valueQueue = this.options.values ? values ?? null : null;
       } catch (error) {
         setImmediate(() => callback(error, undefined, undefined));
         return;
@@ -80,17 +82,25 @@ class ReactNativeLeveldownIterator<
     }
 
     if (this.isExhausted) {
-      setImmediate(callback);
+      setImmediate(callback as any);
     } else {
       this.queueLength--;
-      const keyString = this.keyQueue?.shift();
-      const key = (this.keyAsBuffer
-        ? Buffer.from(keyString, "binary")
-        : keyString) as K;
-      const valueString = this.valueQueue?.shift();
-      const value = (this.valueAsBuffer
-        ? Buffer.from(valueString, "binary")
-        : valueString) as V;
+      let keyString: string;
+      let key: K;
+      if (this.options.keys) {
+        keyString = this.keyQueue?.shift();
+        key = (this.keyAsBuffer
+          ? Buffer.from(keyString, "binary")
+          : keyString) as K;
+      }
+      let valueString: string;
+      let value: V;
+      if (this.options.values) {
+        valueString = this.valueQueue?.shift();
+        value = (this.valueAsBuffer
+          ? Buffer.from(valueString, "binary")
+          : valueString) as V;
+      }
       if (this.isInImmediate) {
         callback(undefined, key, value);
       } else {
@@ -116,7 +126,7 @@ class ReactNativeLeveldownIterator<
 
   _end(callback: ALD.ErrorCallback): void {
     NativeModules.Leveldown.endIterator(this.iteratorHandle)
-      .then(() => setImmediate(callback))
+      .then(() => setImmediate(callback as any))
       .catch(callback);
   }
 }
@@ -128,6 +138,7 @@ export default class ReactNativeLeveldown extends ALD.AbstractLevelDOWN {
 
   constructor(databaseName: string) {
     super(
+      // @ts-ignore
       supports({
         bufferKeys: false,
         snapshots: true,
@@ -168,7 +179,7 @@ export default class ReactNativeLeveldown extends ALD.AbstractLevelDOWN {
       inputAsString(value),
       options.sync ?? false
     )
-      .then(() => setImmediate(callback))
+      .then(() => setImmediate(callback as any))
       .catch(callback);
   }
 
@@ -197,13 +208,13 @@ export default class ReactNativeLeveldown extends ALD.AbstractLevelDOWN {
       inputAsString(key),
       options.sync ?? false
     )
-      .then(() => setImmediate(callback))
+      .then(() => setImmediate(callback as any))
       .catch(callback);
   }
 
   _close(callback: ALD.ErrorCallback): void {
     NativeModules.Leveldown.close(this.databaseHandle)
-      .then(() => setImmediate(callback))
+      .then(() => setImmediate(callback as any))
       .catch(callback);
   }
 
@@ -212,8 +223,15 @@ export default class ReactNativeLeveldown extends ALD.AbstractLevelDOWN {
     options: {},
     callback: ALD.ErrorCallback
   ): Promise<void> {
-    NativeModules.Leveldown.batch(this.databaseHandle, operations)
-      .then(() => setImmediate(callback))
+    NativeModules.Leveldown.batch(this.databaseHandle, operations.map((op) => {
+      const newOP = {...op};
+      newOP.key = inputAsString(newOP.key);
+      if (newOP.type === "put") {
+        newOP.value = inputAsString(newOP.value);
+      }
+      return newOP;
+    }))
+      .then(() => setImmediate(callback as any))
       .catch(callback);
   }
 
