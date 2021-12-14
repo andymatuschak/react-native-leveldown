@@ -1,3 +1,7 @@
+# Archival notice
+
+I'm archiving and deprecating this library: it uses Native Modules, which involves lots of inefficient marshalling, and also makes [proper binary key/value support](https://github.com/andymatuschak/react-native-leveldown/issues/6) impossible. I'd suggest adopting [react-native-leveldb](https://github.com/greentriangle/react-native-leveldb) instead: it's a more correct and more efficient JSI implementation. Unfortunately, its interface is not `abstract-leveldown` compatible. If anyone would like to take over this repo and [turn it into a compatibility shim for react-native-leveldb](https://github.com/andymatuschak/react-native-leveldown/issues/7), I'm happy to transfer ownership of this and/or the NPM module.
+
 # react-native-leveldown
 
 This library implements an [`abstract-leveldown`](https://github.com/Level/abstract-leveldown) compatible interface to [LevelDB](https://github.com/google/leveldb) for [React Native](https://reactnative.dev). The implementation is a thin [Native Module](https://reactnative.dev/docs/native-modules-setup) binding directly to the original C++ implementation of LevelDB.
